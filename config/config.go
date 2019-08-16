@@ -21,27 +21,36 @@ type Configuration struct {
 var Config = newConfiguration()
 
 func newConfiguration() *Configuration {
-	// ref. https://dev.mysql.com/doc/refman/5.6/ja/environment-variables.html
-	c := &Configuration{
+	return &Configuration{
 		Host:              "127.0.0.1",
+		Socket:            "",
+		User:              "",
+		Password:          "",
 		Port:              3306,
+		DatabaseName:      "",
 		PurgeDelaySeconds: 7,
 	}
+}
+
+func loadEnvironmentVariables() error {
+	// ref. https://dev.mysql.com/doc/refman/5.6/ja/environment-variables.html
 	if v := os.Getenv("MYSQL_HOST"); v != "" {
-		c.Host = v
+		Config.Host = v
 	}
 	if v := os.Getenv("MYSQL_PWD"); v != "" {
-		c.Password = v
+		Config.Password = v
 	}
 	if v := os.Getenv("MYSQL_TCP_PORT"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			c.Port = i
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			return err
 		}
+		Config.Port = i
 	}
 	if v := os.Getenv("MYSQL_UNIX_PORT"); v != "" {
-		c.Socket = v
+		Config.Socket = v
 	}
-	return c
+	return nil
 }
 
 func loadDefaultsFile(filepath string) error {
@@ -75,53 +84,79 @@ func loadDefaultsFile(filepath string) error {
 	return nil
 }
 
+type myArg struct {
+	value      string
+	fromCmdArg bool
+}
+
+func (v *myArg) String() string {
+	return v.value
+}
+func (v *myArg) Set(s string) error {
+	v.value = s
+	v.fromCmdArg = true
+	return nil
+}
+
 func ParseOptions() error {
 	var (
-		database          string
-		host              string
-		socket            string
-		user              string
-		password          string
-		defaultsFile      string
-		port              int
-		purgeDelaySeconds int
+		database          myArg
+		host              myArg
+		socket            myArg
+		user              myArg
+		password          myArg
+		defaultsFile      myArg
+		port              myArg
+		purgeDelaySeconds myArg
 	)
-	flag.StringVar(&database, "d", "_default_", "mysql database name")
-	flag.StringVar(&host, "h", "_default_", "mysql host")
-	flag.StringVar(&socket, "S", "_default_", "mysql unix socket")
-	flag.StringVar(&user, "u", "_default_", "mysql username")
-	flag.StringVar(&password, "p", "_default_", "mysql user password")
-	flag.StringVar(&defaultsFile, "defaults-file", "_default_", "Only read default options from the given file")
-	flag.IntVar(&port, "P", -1, "mysql port")
-	flag.IntVar(&purgeDelaySeconds, "delay", -1, "purge delay seconds")
+	flag.Var(&database, "d", "mysql database name")
+	flag.Var(&host, "h", "mysql host")
+	flag.Var(&socket, "S", "mysql unix socket")
+	flag.Var(&user, "u", "mysql username")
+	flag.Var(&password, "p", "mysql user password")
+	flag.Var(&defaultsFile, "defaults-file", "Only read default options from the given file")
+	flag.Var(&port, "P", "mysql port")
+	flag.Var(&purgeDelaySeconds, "delay", "purge delay seconds")
 	flag.Parse()
 
-	if defaultsFile != "_default_" {
-		if err := loadDefaultsFile(defaultsFile); err != nil {
+	if err := loadEnvironmentVariables(); err != nil {
+		return err
+	}
+
+	if defaultsFile.fromCmdArg {
+		if err := loadDefaultsFile(defaultsFile.value); err != nil {
 			return err
 		}
 	}
 
-	if database != "_default_" {
-		Config.DatabaseName = database
+	if database.fromCmdArg {
+		Config.DatabaseName = database.value
 	}
-	if host != "_default_" {
-		Config.Host = host
+	if host.fromCmdArg {
+		Config.Host = host.value
 	}
-	if socket != "_default_" {
-		Config.Socket = socket
+	if socket.fromCmdArg {
+		Config.Socket = socket.value
 	}
-	if user != "_default_" {
-		Config.User = user
+	if user.fromCmdArg {
+		Config.User = user.value
 	}
-	if password != "_default_" {
-		Config.Password = password
+	if password.fromCmdArg {
+		Config.Password = password.value
 	}
-	if port != -1 {
-		Config.Port = port
+	if port.fromCmdArg {
+		i, err := strconv.Atoi(port.value)
+		if err != nil {
+			return err
+		}
+		Config.Port = i
 	}
-	if purgeDelaySeconds != -1 {
-		Config.PurgeDelaySeconds = purgeDelaySeconds
+	if purgeDelaySeconds.fromCmdArg {
+		i, err := strconv.Atoi(purgeDelaySeconds.value)
+		if err != nil {
+			return err
+		}
+		Config.PurgeDelaySeconds = i
 	}
 
 	return nil
