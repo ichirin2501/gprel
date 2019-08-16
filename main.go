@@ -73,14 +73,14 @@ func run() (int, error) {
 
 	if ok, err := isSlave(db); !ok {
 		if err == nil {
-			return 1, fmt.Errorf("target mysql server is not defined as replication slave")
+			return ExitCodeError, fmt.Errorf("target mysql server is not defined as replication slave")
 		}
 		return ExitCodeError, err
 	}
 
 	if ok, err := isRelayLogPurge(db); ok {
 		if err == nil {
-			return 1, fmt.Errorf("relay_log_purge is enabled")
+			return ExitCodeError, fmt.Errorf("relay_log_purge is enabled")
 		}
 		return ExitCodeError, err
 	}
