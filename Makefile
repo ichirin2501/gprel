@@ -5,7 +5,7 @@ BINNAME=gprel
 all: dep test build
 
 build:
-	go build -o $(BINNAME) .
+	go build -ldflags='-w -s' -o $(BINNAME) .
 
 test:
 	go test -v ./...
