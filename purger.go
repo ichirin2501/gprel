@@ -2,10 +2,10 @@ package gprel
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
 )
 
 type Purger struct {
@@ -53,7 +53,6 @@ func (p *Purger) isIOSQLThreadRunning() (bool, error) {
 	return true, nil
 }
 
-// TODO: name
 func (p *Purger) isRelayLogPurge() (bool, error) {
 	var v int
 	err := p.db.QueryRow("SELECT @@global.relay_log_purge AS Value").Scan(&v)
@@ -77,16 +76,16 @@ func (p *Purger) Purge() error {
 		return err
 	}
 
-	log.Println("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS")
+	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS")
 	if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
 		return err
 	}
 
-	log.Println("Executing sleep delay...")
+	log.Debug("Executing sleep delay...")
 	time.Sleep(time.Duration(p.DelaySeconds) * time.Second)
 
 	// last check
-	log.Println("check SQL/IO Thread state")
+	log.Debug("check SQL/IO Thread state")
 	if ok, err := p.isIOSQLThreadRunning(); !ok {
 		if err == nil {
 			return fmt.Errorf("stop slave?")
@@ -94,18 +93,18 @@ func (p *Purger) Purge() error {
 		return err
 	}
 
-	log.Println("Executing SET GLOBAL relay_log_purge = 1")
+	log.Debug("Executing SET GLOBAL relay_log_purge = 1")
 	if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 1"); err != nil {
 		return err
 	}
-	log.Println("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS (again)")
+	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS (again)")
 	if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
 		return err
 	}
 
 	time.Sleep(3 * time.Second)
 
-	log.Println("Executing SET GLOBAL relay_log_purge = 0")
+	log.Debug("Executing SET GLOBAL relay_log_purge = 0")
 	if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 0"); err != nil {
 		return err
 	}

@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"runtime"
-	"time"
 
 	"github.com/ichirin2501/gprel"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
 )
 
 // Version is the version of gprel
@@ -24,7 +23,7 @@ func showVersionString() string {
 }
 
 func run(c *gprel.Configuration) error {
-	log.Println("purge relay-log started")
+	log.Info("purge relay-log started")
 
 	var dsn string
 	if c.Socket != "" {
@@ -43,18 +42,16 @@ func run(c *gprel.Configuration) error {
 	if err := purger.Purge(); err != nil {
 		return err
 	}
-	log.Println("OK")
-	log.Println("relay-log purging operations succeeded")
+	log.Info("OK")
+	log.Info("relay-log purging operations succeeded")
 
 	return nil
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-
 	c, err := gprel.ParseOptions(os.Args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Error(err)
 		os.Exit(1)
 	}
 
@@ -64,7 +61,7 @@ func main() {
 	}
 
 	if err := run(c); err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", time.Now().Format("2006/01/02 15:04:05"), err)
+		log.Error(err)
 		os.Exit(1)
 	}
 }
