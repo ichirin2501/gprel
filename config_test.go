@@ -1,6 +1,7 @@
 package gprel
 
 import (
+	"errors"
 	"os"
 	"testing"
 )
@@ -57,6 +58,27 @@ func TestParseOptions(t *testing.T) {
 			false,
 			nil,
 		},
+		{
+			[]string{"test3", "-g", "nihaha"},
+			map[string]string{},
+			&Configuration{},
+			true,
+			errors.New("flag provided but not defined: -g"),
+		},
+		{
+			[]string{"test4", "-defaults-file", "./testdata/test100.cnf", "-delay", "5"},
+			map[string]string{},
+			&Configuration{},
+			true,
+			errors.New("open ./testdata/test100.cnf: no such file or directory"),
+		},
+		{
+			[]string{"test5", "-defaults-file", "./testdata/test2.cnf"},
+			map[string]string{},
+			&Configuration{},
+			true,
+			errors.New("invalid INI syntax on line 1: //// [client]"),
+		},
 	}
 
 	for idx, p := range patterns {
@@ -75,7 +97,7 @@ func TestParseOptions(t *testing.T) {
 		if p.wantError && !eqErrFunc(p.err, gotErr) {
 			t.Fatalf("pattern %d: want %+v, but %+v", idx, p.err, gotErr)
 		}
-		if *gotConfig != *p.wantConfig {
+		if !p.wantError && *gotConfig != *p.wantConfig {
 			t.Errorf("pattern %d: want (%+v), got (%+v)", idx, p.wantConfig, gotConfig)
 		}
 	}
