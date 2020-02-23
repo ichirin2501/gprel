@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/ichirin2501/gprel"
@@ -11,6 +12,16 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
+
+// Version is the version of gprel
+const Version = "0.0.1"
+
+func showVersionString() string {
+	return fmt.Sprintf(
+		"gprel version %s built with %s %s %s",
+		Version, runtime.Version(), runtime.GOOS, runtime.GOARCH,
+	)
+}
 
 func run(c *gprel.Configuration) error {
 	log.Println("purge relay-log started")
@@ -46,6 +57,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	if c.ShowVersion {
+		fmt.Println(showVersionString())
+		os.Exit(0)
+	}
+
 	if err := run(c); err != nil {
 		fmt.Fprintf(os.Stderr, "%s %v\n", time.Now().Format("2006/01/02 15:04:05"), err)
 		os.Exit(1)
