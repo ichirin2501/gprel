@@ -17,6 +17,7 @@ type Configuration struct {
 	DatabaseName      string
 	PurgeDelaySeconds int
 	ShowVersion       bool
+	DryRun            bool
 }
 
 func (c *Configuration) loadEnvironmentVariables() error {
@@ -96,18 +97,20 @@ func ParseOptions(args []string) (*Configuration, error) {
 		port              myArg
 		purgeDelaySeconds myArg
 		showVersion       bool
+		goRun             bool
 	)
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
 	f.Var(&database, "d", "mysql database name")
-	f.Var(&host, "h", "mysql host")
+	f.Var(&host, "h", "mysql host (default: 127.0.0.1)")
 	f.Var(&socket, "S", "mysql unix socket")
 	f.Var(&user, "u", "mysql username")
 	f.Var(&password, "p", "mysql user password")
 	f.Var(&defaultsFile, "defaults-file", "Only read default options from the given file")
-	f.Var(&port, "P", "mysql port")
-	f.Var(&purgeDelaySeconds, "delay", "purge delay seconds")
+	f.Var(&port, "P", "mysql port (default: 3306)")
+	f.Var(&purgeDelaySeconds, "delay", "purge delay seconds (default: 7)")
 	f.BoolVar(&showVersion, "version", false, "show version")
+	f.BoolVar(&goRun, "go", false, "execute (default: false)")
 	if err := f.Parse(args[1:]); err != nil {
 		return nil, err
 	}
@@ -121,6 +124,7 @@ func ParseOptions(args []string) (*Configuration, error) {
 		DatabaseName:      "",
 		PurgeDelaySeconds: 7,
 		ShowVersion:       showVersion,
+		DryRun:            !goRun,
 	}
 
 	if err := c.loadEnvironmentVariables(); err != nil {

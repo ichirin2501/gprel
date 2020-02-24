@@ -39,12 +39,13 @@ func TestParseOptions(t *testing.T) {
 				Port:              13306,
 				DatabaseName:      "",
 				PurgeDelaySeconds: 7,
+				DryRun:            true,
 			},
 			false,
 			nil,
 		},
 		{
-			[]string{"test2", "-defaults-file", "./testdata/test1.cnf", "-delay", "5"},
+			[]string{"test2", "-defaults-file", "./testdata/test1.cnf", "-delay", "5", "-go"},
 			map[string]string{"MYSQL_HOST": "10.0.10.5", "MYSQL_PWD": "test"},
 			&Configuration{
 				Host:              "10.0.10.5",
@@ -54,6 +55,7 @@ func TestParseOptions(t *testing.T) {
 				Port:              3306,
 				DatabaseName:      "",
 				PurgeDelaySeconds: 5,
+				DryRun:            false,
 			},
 			false,
 			nil,

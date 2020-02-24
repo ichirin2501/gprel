@@ -23,6 +23,10 @@ func showVersionString() string {
 }
 
 func run(c *gprel.Configuration) error {
+
+	if c.DryRun {
+		log.Info("Dry-run mode")
+	}
 	log.Info("purge relay-log started")
 
 	var dsn string
@@ -37,13 +41,16 @@ func run(c *gprel.Configuration) error {
 	}
 	defer db.Close()
 
-	purger := gprel.NewPurger(db, c.PurgeDelaySeconds)
+	purger := gprel.NewPurger(db, c.PurgeDelaySeconds, c.DryRun)
 
 	if err := purger.Purge(); err != nil {
 		return err
 	}
-	log.Info("OK")
 	log.Info("relay-log purging operations succeeded")
+
+	if c.DryRun {
+		log.Warn("Dry-run have finished. Please specify -go if you want to purge relay-log")
+	}
 
 	return nil
 }

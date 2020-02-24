@@ -11,12 +11,14 @@ import (
 type Purger struct {
 	db           *sqlx.DB
 	DelaySeconds int
+	DryRun       bool
 }
 
-func NewPurger(db *sqlx.DB, delay int) *Purger {
+func NewPurger(db *sqlx.DB, delay int, dryRun bool) *Purger {
 	return &Purger{
 		db:           db,
 		DelaySeconds: delay,
+		DryRun:       dryRun,
 	}
 }
 
@@ -77,8 +79,10 @@ func (p *Purger) Purge() error {
 	}
 
 	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS")
-	if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
-		return err
+	if !p.DryRun {
+		if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
+			return err
+		}
 	}
 
 	log.Debug("Executing sleep delay...")
@@ -94,19 +98,25 @@ func (p *Purger) Purge() error {
 	}
 
 	log.Debug("Executing SET GLOBAL relay_log_purge = 1")
-	if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 1"); err != nil {
-		return err
+	if !p.DryRun {
+		if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 1"); err != nil {
+			return err
+		}
 	}
 	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS (again)")
-	if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
-		return err
+	if !p.DryRun {
+		if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
+			return err
+		}
 	}
 
 	time.Sleep(3 * time.Second)
 
 	log.Debug("Executing SET GLOBAL relay_log_purge = 0")
-	if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 0"); err != nil {
-		return err
+	if !p.DryRun {
+		if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 0"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
