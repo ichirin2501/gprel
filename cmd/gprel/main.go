@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -42,6 +43,15 @@ func run(c *gprel.Configuration) error {
 	defer db.Close()
 
 	purger := gprel.NewPurger(db, c.PurgeDelaySeconds, c.DryRun)
+
+	priv, err := purger.HasPurgePrivilege()
+	if err != nil {
+		return err
+	}
+	if !priv {
+		return errors.New("the user doesn't have purge privilege")
+	}
+	log.Info("purge privilege OK")
 
 	if err := purger.Purge(); err != nil {
 		return err

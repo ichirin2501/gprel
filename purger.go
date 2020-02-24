@@ -2,6 +2,7 @@ package gprel
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -62,6 +63,44 @@ func (p *Purger) isRelayLogPurge() (bool, error) {
 		return false, err
 	}
 	return v == 1, nil
+}
+
+func (p *Purger) HasPurgePrivilege() (bool, error) {
+	rows, err := p.db.Queryx(`show grants for current_user()`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	var (
+		hasSUPER             bool
+		hasRELOAD            bool
+		hasReplicationClient bool
+	)
+	for rows.Next() {
+		var (
+			grantData string
+		)
+		if err := rows.Scan(&grantData); err != nil {
+			return false, err
+		}
+		if strings.Contains(grantData, `GRANT ALL PRIVILEGES ON *.*`) {
+			return true, nil
+		}
+		if strings.Contains(grantData, `SUPER`) && strings.Contains(grantData, ` ON *.*`) {
+			hasSUPER = true
+		}
+		if strings.Contains(grantData, `RELOAD`) && strings.Contains(grantData, ` ON *.*`) {
+			hasRELOAD = true
+		}
+		if strings.Contains(grantData, `REPLICATION CLIENT`) && strings.Contains(grantData, ` ON *.*`) {
+			hasReplicationClient = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return hasSUPER && hasRELOAD && hasReplicationClient, nil
 }
 
 func (p *Purger) Purge() error {
