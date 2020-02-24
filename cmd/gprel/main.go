@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the version of gprel
-const Version = "0.0.1"
+const Version = "0.1.0"
 
 func showVersionString() string {
 	return fmt.Sprintf(
