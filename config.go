@@ -1,4 +1,4 @@
-package config
+package gprel
 
 import (
 	"flag"
@@ -16,70 +16,58 @@ type Configuration struct {
 	Port              int
 	DatabaseName      string
 	PurgeDelaySeconds int
+	ShowVersion       bool
+	DryRun            bool
 }
 
-var Config = newConfiguration()
-
-func newConfiguration() *Configuration {
-	return &Configuration{
-		Host:              "127.0.0.1",
-		Socket:            "",
-		User:              "",
-		Password:          "",
-		Port:              3306,
-		DatabaseName:      "",
-		PurgeDelaySeconds: 7,
-	}
-}
-
-func loadEnvironmentVariables() error {
+func (c *Configuration) loadEnvironmentVariables() error {
 	// ref. https://dev.mysql.com/doc/refman/5.6/ja/environment-variables.html
 	if v := os.Getenv("MYSQL_HOST"); v != "" {
-		Config.Host = v
+		c.Host = v
 	}
 	if v := os.Getenv("MYSQL_PWD"); v != "" {
-		Config.Password = v
+		c.Password = v
 	}
 	if v := os.Getenv("MYSQL_TCP_PORT"); v != "" {
 		i, err := strconv.Atoi(v)
 		if err != nil {
 			return err
 		}
-		Config.Port = i
+		c.Port = i
 	}
 	if v := os.Getenv("MYSQL_UNIX_PORT"); v != "" {
-		Config.Socket = v
+		c.Socket = v
 	}
 	return nil
 }
 
-func loadDefaultsFile(filepath string) error {
+func (c *Configuration) loadDefaultsFile(filepath string) error {
 	file, err := ini.LoadFile(filepath)
 	if err != nil {
 		return err
 	}
 	section := file.Section("client")
 	if user, ok := section["user"]; ok {
-		Config.User = user
+		c.User = user
 	}
 	if password, ok := section["password"]; ok {
-		Config.Password = password
+		c.Password = password
 	}
 	if socket, ok := section["socket"]; ok {
-		Config.Socket = socket
+		c.Socket = socket
 	}
 	if host, ok := section["host"]; ok {
-		Config.Host = host
+		c.Host = host
 	}
 	if port, ok := section["port"]; ok {
 		i, err := strconv.Atoi(port)
 		if err != nil {
 			return err
 		}
-		Config.Port = i
+		c.Port = i
 	}
 	if database, ok := section["database"]; ok {
-		Config.DatabaseName = database
+		c.DatabaseName = database
 	}
 	return nil
 }
@@ -98,7 +86,7 @@ func (v *myArg) Set(s string) error {
 	return nil
 }
 
-func ParseOptions() error {
+func ParseOptions(args []string) (*Configuration, error) {
 	var (
 		database          myArg
 		host              myArg
@@ -108,56 +96,76 @@ func ParseOptions() error {
 		defaultsFile      myArg
 		port              myArg
 		purgeDelaySeconds myArg
+		showVersion       bool
+		goRun             bool
 	)
-	flag.Var(&database, "d", "mysql database name")
-	flag.Var(&host, "h", "mysql host")
-	flag.Var(&socket, "S", "mysql unix socket")
-	flag.Var(&user, "u", "mysql username")
-	flag.Var(&password, "p", "mysql user password")
-	flag.Var(&defaultsFile, "defaults-file", "Only read default options from the given file")
-	flag.Var(&port, "P", "mysql port")
-	flag.Var(&purgeDelaySeconds, "delay", "purge delay seconds")
-	flag.Parse()
+	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
-	if err := loadEnvironmentVariables(); err != nil {
-		return err
+	f.Var(&database, "d", "mysql database name")
+	f.Var(&host, "h", "mysql host (default: 127.0.0.1)")
+	f.Var(&socket, "S", "mysql unix socket")
+	f.Var(&user, "u", "mysql username")
+	f.Var(&password, "p", "mysql user password")
+	f.Var(&defaultsFile, "defaults-file", "Only read default options from the given file")
+	f.Var(&port, "P", "mysql port (default: 3306)")
+	f.Var(&purgeDelaySeconds, "delay", "purge delay seconds (default: 7)")
+	f.BoolVar(&showVersion, "version", false, "show version")
+	f.BoolVar(&goRun, "go", false, "execute (default: false)")
+	if err := f.Parse(args[1:]); err != nil {
+		return nil, err
+	}
+
+	c := &Configuration{
+		Host:              "127.0.0.1",
+		Socket:            "",
+		User:              "",
+		Password:          "",
+		Port:              3306,
+		DatabaseName:      "",
+		PurgeDelaySeconds: 7,
+		ShowVersion:       showVersion,
+		DryRun:            !goRun,
+	}
+
+	if err := c.loadEnvironmentVariables(); err != nil {
+		return nil, err
 	}
 
 	if defaultsFile.fromCmdArg {
-		if err := loadDefaultsFile(defaultsFile.value); err != nil {
-			return err
+		if err := c.loadDefaultsFile(defaultsFile.value); err != nil {
+			return nil, err
 		}
 	}
 
 	if database.fromCmdArg {
-		Config.DatabaseName = database.value
+		c.DatabaseName = database.value
 	}
 	if host.fromCmdArg {
-		Config.Host = host.value
+		c.Host = host.value
 	}
 	if socket.fromCmdArg {
-		Config.Socket = socket.value
+		c.Socket = socket.value
 	}
 	if user.fromCmdArg {
-		Config.User = user.value
+		c.User = user.value
 	}
 	if password.fromCmdArg {
-		Config.Password = password.value
+		c.Password = password.value
 	}
 	if port.fromCmdArg {
 		i, err := strconv.Atoi(port.value)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		Config.Port = i
+		c.Port = i
 	}
 	if purgeDelaySeconds.fromCmdArg {
 		i, err := strconv.Atoi(purgeDelaySeconds.value)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		Config.PurgeDelaySeconds = i
+		c.PurgeDelaySeconds = i
 	}
 
-	return nil
+	return c, nil
 }

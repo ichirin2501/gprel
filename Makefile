@@ -5,11 +5,12 @@ BINNAME=gprel
 all: test build
 
 build:
-	go build -ldflags='-w -s' -o $(BINNAME) .
+	go build -ldflags='-w -s' -o $(BINNAME) ./cmd/$(BINNAME)/main.go
 
 test:
-	go test -v ./...
+	go test -race -v ./...
 
 clean:
 	go clean
+	go clean -testcache
 	rm -f $(BINNAME)
