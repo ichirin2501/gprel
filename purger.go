@@ -1,6 +1,7 @@
 package gprel
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -23,8 +24,8 @@ func NewPurger(db *sqlx.DB, delay int, dryRun bool) *Purger {
 	}
 }
 
-func (p *Purger) isIOSQLThreadRunning() (bool, error) {
-	rows, err := p.db.Queryx("SHOW SLAVE STATUS")
+func (p *Purger) isIOSQLThreadRunning(ctx context.Context) (bool, error) {
+	rows, err := p.db.QueryxContext(ctx, `SHOW SLAVE STATUS`)
 	if err != nil {
 		return false, err
 	}
@@ -48,6 +49,9 @@ func (p *Purger) isIOSQLThreadRunning() (bool, error) {
 			return false, nil
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
 
 	if !isSlave {
 		return false, fmt.Errorf("not a slave")
@@ -56,17 +60,16 @@ func (p *Purger) isIOSQLThreadRunning() (bool, error) {
 	return true, nil
 }
 
-func (p *Purger) isRelayLogPurge() (bool, error) {
+func (p *Purger) isRelayLogPurge(ctx context.Context) (bool, error) {
 	var v int
-	err := p.db.QueryRow("SELECT @@global.relay_log_purge AS Value").Scan(&v)
-	if err != nil {
+	if err := p.db.QueryRowxContext(ctx, `SELECT @@global.relay_log_purge AS Value`).Scan(&v); err != nil {
 		return false, err
 	}
 	return v == 1, nil
 }
 
-func (p *Purger) HasPurgePrivilege() (bool, error) {
-	rows, err := p.db.Queryx(`show grants for current_user()`)
+func (p *Purger) HasPurgePrivilege(ctx context.Context) (bool, error) {
+	rows, err := p.db.QueryxContext(ctx, `show grants for current_user()`)
 	if err != nil {
 		return false, err
 	}
@@ -103,14 +106,14 @@ func (p *Purger) HasPurgePrivilege() (bool, error) {
 	return hasSUPER && hasRELOAD && hasReplicationClient, nil
 }
 
-func (p *Purger) Purge() error {
-	if ok, err := p.isIOSQLThreadRunning(); !ok {
+func (p *Purger) Purge(ctx context.Context) error {
+	if ok, err := p.isIOSQLThreadRunning(ctx); !ok {
 		if err == nil {
 			return fmt.Errorf("SQL or IO Thread is not running")
 		}
 		return err
 	}
-	if ok, err := p.isRelayLogPurge(); ok {
+	if ok, err := p.isRelayLogPurge(ctx); ok {
 		if err == nil {
 			return fmt.Errorf("relay_log_purge is enabled")
 		}
@@ -119,17 +122,22 @@ func (p *Purger) Purge() error {
 
 	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS")
 	if !p.DryRun {
-		if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
+		if _, err := p.db.ExecContext(ctx, "FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
 			return err
 		}
 	}
 
 	log.Debug("Executing sleep delay...")
-	time.Sleep(time.Duration(p.DelaySeconds) * time.Second)
+	delayTicker := time.NewTicker(time.Duration(p.DelaySeconds) * time.Second)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-delayTicker.C:
+	}
 
 	// last check
 	log.Debug("check SQL/IO Thread state")
-	if ok, err := p.isIOSQLThreadRunning(); !ok {
+	if ok, err := p.isIOSQLThreadRunning(ctx); !ok {
 		if err == nil {
 			return fmt.Errorf("stop slave?")
 		}
@@ -138,22 +146,45 @@ func (p *Purger) Purge() error {
 
 	log.Debug("Executing SET GLOBAL relay_log_purge = 1")
 	if !p.DryRun {
-		if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 1"); err != nil {
-			return err
-		}
-	}
-	log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS (again)")
-	if !p.DryRun {
-		if _, err := p.db.Exec("FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
+		if _, err := p.db.ExecContext(ctx, "SET GLOBAL relay_log_purge = 1"); err != nil {
 			return err
 		}
 	}
 
-	time.Sleep(3 * time.Second)
+	err := func() error {
+		log.Debug("Executing FLUSH NO_WRITE_TO_BINLOG RELAY LOGS (again)")
+		if !p.DryRun {
+			if _, err := p.db.ExecContext(ctx, "FLUSH NO_WRITE_TO_BINLOG RELAY LOGS"); err != nil {
+				return err
+			}
+		}
+		ticker := time.NewTicker(3 * time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		return nil
+	}()
+	if err != nil {
+		// clean up
+		if !p.DryRun {
+			log.Info("Try a cleanup process...")
+			c, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			_, e := p.db.ExecContext(c, "SET GLOBAL relay_log_purge = 0")
+			if e == nil {
+				log.Info("The cleanup process has been completed")
+			} else {
+				log.Warn("The cleanup process failed")
+			}
+		}
+		return err
+	}
 
 	log.Debug("Executing SET GLOBAL relay_log_purge = 0")
 	if !p.DryRun {
-		if _, err := p.db.Exec("SET GLOBAL relay_log_purge = 0"); err != nil {
+		if _, err := p.db.ExecContext(ctx, "SET GLOBAL relay_log_purge = 0"); err != nil {
 			return err
 		}
 	}

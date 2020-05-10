@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
 	"github.com/ichirin2501/gprel"
 
@@ -23,7 +26,26 @@ func showVersionString() string {
 	)
 }
 
+var trapSignals = []os.Signal{
+	syscall.SIGHUP,
+	syscall.SIGINT,
+	syscall.SIGTERM,
+	syscall.SIGQUIT,
+}
+
 func run(c *gprel.Configuration) error {
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, trapSignals...)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		sig := <-sigCh
+		log.Info("got signal: ", sig)
+		cancel()
+	}()
 
 	if c.DryRun {
 		log.Info("Dry-run mode")
@@ -44,7 +66,7 @@ func run(c *gprel.Configuration) error {
 
 	purger := gprel.NewPurger(db, c.PurgeDelaySeconds, c.DryRun)
 
-	priv, err := purger.HasPurgePrivilege()
+	priv, err := purger.HasPurgePrivilege(ctx)
 	if err != nil {
 		return err
 	}
@@ -53,7 +75,7 @@ func run(c *gprel.Configuration) error {
 	}
 	log.Info("purge privilege OK")
 
-	if err := purger.Purge(); err != nil {
+	if err := purger.Purge(ctx); err != nil {
 		return err
 	}
 	log.Info("relay-log purging operations succeeded")
