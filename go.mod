@@ -7,5 +7,5 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec
-	google.golang.org/appengine v1.6.1
+	google.golang.org/appengine v1.6.1 // indirect
 )
