@@ -4,14 +4,9 @@ import (
 	"errors"
 	"os"
 	"testing"
-)
 
-var eqErrFunc = func(a, b error) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	return a.Error() == b.Error()
-}
+	"github.com/stretchr/testify/assert"
+)
 
 func resetEnv() {
 	os.Unsetenv("MYSQL_HOST")
@@ -22,6 +17,7 @@ func resetEnv() {
 
 func TestParseOptions(t *testing.T) {
 	patterns := []struct {
+		name       string
 		args       []string
 		env        map[string]string
 		wantConfig *Configuration
@@ -29,6 +25,7 @@ func TestParseOptions(t *testing.T) {
 		err        error
 	}{
 		{
+			"1",
 			[]string{"test1", "-u", "root", "-p", "pass", "-h", "localhost", "-P", "13306"},
 			map[string]string{},
 			&Configuration{
@@ -45,6 +42,7 @@ func TestParseOptions(t *testing.T) {
 			nil,
 		},
 		{
+			"2",
 			[]string{"test2", "-defaults-file", "./testdata/test1.cnf", "-delay", "5", "-go"},
 			map[string]string{"MYSQL_HOST": "10.0.10.5", "MYSQL_PWD": "test"},
 			&Configuration{
@@ -61,6 +59,7 @@ func TestParseOptions(t *testing.T) {
 			nil,
 		},
 		{
+			"3",
 			[]string{"test3", "-g", "nihaha"},
 			map[string]string{},
 			&Configuration{},
@@ -68,6 +67,7 @@ func TestParseOptions(t *testing.T) {
 			errors.New("flag provided but not defined: -g"),
 		},
 		{
+			"4",
 			[]string{"test4", "-defaults-file", "./testdata/test100.cnf", "-delay", "5"},
 			map[string]string{},
 			&Configuration{},
@@ -75,6 +75,7 @@ func TestParseOptions(t *testing.T) {
 			errors.New("open ./testdata/test100.cnf: no such file or directory"),
 		},
 		{
+			"5",
 			[]string{"test5", "-defaults-file", "./testdata/test2.cnf"},
 			map[string]string{},
 			&Configuration{},
@@ -83,24 +84,25 @@ func TestParseOptions(t *testing.T) {
 		},
 	}
 
-	for idx, p := range patterns {
-		resetEnv()
+	for _, p := range patterns {
+		p := p
+		t.Run(p.name, func(t *testing.T) {
+			resetEnv()
 
-		// set env
-		for k, v := range p.env {
-			if err := os.Setenv(k, v); err != nil {
-				t.Fatal(err)
+			// set env
+			for k, v := range p.env {
+				if err := os.Setenv(k, v); err != nil {
+					t.Fatal(err)
+				}
 			}
-		}
-		gotConfig, gotErr := ParseOptions(p.args)
-		if !p.wantError && gotErr != nil {
-			t.Fatalf("pattern %d: want no err, but has error %+v", idx, gotErr)
-		}
-		if p.wantError && !eqErrFunc(p.err, gotErr) {
-			t.Fatalf("pattern %d: want %+v, but %+v", idx, p.err, gotErr)
-		}
-		if !p.wantError && *gotConfig != *p.wantConfig {
-			t.Errorf("pattern %d: want (%+v), got (%+v)", idx, p.wantConfig, gotConfig)
-		}
+			gotConfig, gotErr := ParseOptions(p.args)
+			if p.wantError {
+				assert.Nil(t, gotConfig)
+				assert.EqualError(t, gotErr, p.err.Error())
+			} else {
+				assert.NoError(t, gotErr)
+				assert.Equal(t, p.wantConfig, gotConfig)
+			}
+		})
 	}
 }
