@@ -2,6 +2,7 @@ package gprel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,8 @@ func NewPurger(db *sqlx.DB, delay int, dryRun bool) *Purger {
 	}
 }
 
+var errNotReplica = errors.New("not replica")
+
 func (p *Purger) isIOSQLThreadRunning(ctx context.Context) (bool, error) {
 	rows, err := p.db.QueryxContext(ctx, `SHOW SLAVE STATUS`)
 	if err != nil {
@@ -31,9 +34,9 @@ func (p *Purger) isIOSQLThreadRunning(ctx context.Context) (bool, error) {
 	}
 	defer rows.Close()
 
-	var isSlave bool
+	var isReplica bool
 	for rows.Next() {
-		isSlave = true
+		isReplica = true
 		d := make(map[string]interface{})
 		if err := rows.MapScan(d); err != nil {
 			return false, err
@@ -53,8 +56,8 @@ func (p *Purger) isIOSQLThreadRunning(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	if !isSlave {
-		return false, fmt.Errorf("not a slave")
+	if !isReplica {
+		return false, errNotReplica
 	}
 
 	return true, nil
@@ -109,7 +112,12 @@ func (p *Purger) HasPurgePrivilege(ctx context.Context) (bool, error) {
 func (p *Purger) Purge(ctx context.Context) error {
 	if ok, err := p.isIOSQLThreadRunning(ctx); !ok {
 		if err == nil {
-			return fmt.Errorf("SQL or IO Thread is not running")
+			log.Info("SQL or IO Thread is not running")
+			return nil
+		}
+		if err == errNotReplica {
+			log.Info(err)
+			return nil
 		}
 		return err
 	}
@@ -129,6 +137,7 @@ func (p *Purger) Purge(ctx context.Context) error {
 
 	log.Debug("Executing sleep delay...")
 	delayTicker := time.NewTicker(time.Duration(p.DelaySeconds) * time.Second)
+	defer delayTicker.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -139,7 +148,7 @@ func (p *Purger) Purge(ctx context.Context) error {
 	log.Debug("check SQL/IO Thread state")
 	if ok, err := p.isIOSQLThreadRunning(ctx); !ok {
 		if err == nil {
-			return fmt.Errorf("stop slave?")
+			return fmt.Errorf("stop replication?")
 		}
 		return err
 	}
@@ -159,6 +168,7 @@ func (p *Purger) Purge(ctx context.Context) error {
 			}
 		}
 		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
