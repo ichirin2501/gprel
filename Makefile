@@ -12,7 +12,10 @@ build:
 .PHONY: test
 test:
 	go test -race -v ./...
-	go vet ./...
+
+.PHONY: test-coverage
+test-coverage:
+	go test -race -v -coverprofile coverage.out -covermode atomic ./...
 
 .PHONY: clean
 clean:
