@@ -136,12 +136,12 @@ func (p *Purger) Purge(ctx context.Context) error {
 	}
 
 	log.Debug("Executing sleep delay...")
-	delayTicker := time.NewTicker(time.Duration(p.DelaySeconds) * time.Second)
-	defer delayTicker.Stop()
+	delayTimer := time.NewTimer(time.Duration(p.DelaySeconds) * time.Second)
+	defer delayTimer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-delayTicker.C:
+	case <-delayTimer.C:
 	}
 
 	// last check
@@ -167,12 +167,12 @@ func (p *Purger) Purge(ctx context.Context) error {
 				return err
 			}
 		}
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
+		case <-timer.C:
 		}
 		return nil
 	}()
